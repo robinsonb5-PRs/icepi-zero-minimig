@@ -44,7 +44,8 @@ module minimig_virtual_top #(
 	parameter haveaga = 1,
 	parameter haveusbhid = 0,
 	parameter haveauxspi = 0,
-	parameter haveuart = 0
+	parameter haveuart = 0,
+	parameter useprofiler = 0
 ) (
 	// JTAG inputs
 	output sys_tdo,
@@ -585,7 +586,8 @@ TG68K #(
 	.havec2p(havec2p),
 	.haveamigahost(haveamigahost),
 	.havecart(havecart),
-	.sdram64meg(ram_64meg)
+	.sdram64meg(ram_64meg),
+	.useprofiler(useprofiler)
 ) tg68k (
 	.clk          (CLK_114          ),
 	.reset        (tg68_rst_sync    ),

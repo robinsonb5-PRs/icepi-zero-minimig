@@ -10,5 +10,7 @@ package board_config is
 
 	-- Reduce the regular TG68K internal cycle length to 3
 	constant tg68k_short_internal_cycle : boolean := true;
+	
+	constant tg68k_use_profiler : boolean := true;
 
 end package;

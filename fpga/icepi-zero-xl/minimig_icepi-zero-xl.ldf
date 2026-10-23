@@ -438,13 +438,25 @@
         <Source name="../../rtl/fifo/circular_fifo.v" type="Verilog" type_short="Verilog">
             <Options/>
         </Source>
-        <Source name="eightthirtytwo_multicycles.sdc" type="Synplify Design Constraints File" type_short="SDC">
+        <Source name="../../rtl/jcapture2/rtl/jcapture.v" type="Verilog" type_short="Verilog">
+            <Options/>
+        </Source>
+        <Source name="../../rtl/jcapture2/rtl/vjtag_ecp5.v" type="Verilog" type_short="Verilog">
+            <Options/>
+        </Source>
+        <Source name="../../rtl/jcapture2/rtl/vjtag_sync_fifo.v" type="Verilog" type_short="Verilog">
+            <Options/>
+        </Source>
+        <Source name="../../rtl/jtag/profile_cpu.v" type="Verilog" type_short="Verilog">
             <Options/>
         </Source>
         <Source name="icepi-zero-xl.lpf" type="Logic Preference" type_short="LPF">
             <Options/>
         </Source>
         <Source name="minimig_icepi-zero-xl.sdc" type="Synplify Design Constraints File" type_short="SDC">
+            <Options/>
+        </Source>
+        <Source name="eightthirtytwo_multicycles.sdc" type="Synplify Design Constraints File" type_short="SDC">
             <Options/>
         </Source>
     </Implementation>

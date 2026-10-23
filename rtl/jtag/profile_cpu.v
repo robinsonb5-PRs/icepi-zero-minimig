@@ -1,12 +1,15 @@
+`default_nettype none
+
 module profile_cpu (
-	input clk,
-	input reset_n,
-	input clkena,
-	input [1:0] cpustate,
-	input sel_chip,
-	input sel_kick,
-	input sel_fast24,
-	input sel_fast32
+	input wire clk,
+	input wire reset_n,
+	input wire clkena,
+	input wire  [1:0] cpustate,
+	input wire sel_chip,
+	input wire sel_kick,
+	input wire sel_fast24,
+	input wire sel_fast32,
+	output reg reset_n_out
 );
 
 // Sizes of histogram buckets and categories
@@ -20,10 +23,9 @@ localparam buckets_log2 = 4;
 reg active=1'b0;
 
 // Counter
-reg [buckets_log2+1:0] counter; // Cycle count will be a multiple of 4, so add two bits and omit the lowest two when logging
+reg [buckets_log2-1:0] counter;
 reg [categories_log2-1:0] category;
 reg [accesstypes_log2-1:0] accesstype;
-reg [buckets_log2-1:0] cyclecount;
 
 always @(posedge clk) begin
 	if(sel_chip)
@@ -48,8 +50,6 @@ localparam addr_log2 = categories_log2 + accesstypes_log2 + buckets_log2;
 reg [31:0] storage [2**addr_log2];
 reg [addr_log2-1:0] wrptr;
 reg [addr_log2-1:0] rdptr;
-reg wren;
-reg [31:0] wrdata;
 
 // Write side
 
@@ -62,7 +62,6 @@ reg [3:0] state;
 
 reg [31:0] storage_q;
 always @(posedge clk) begin
-	wren<=1'b0;
 	case(state)
 		S_INIT: begin
 			wrptr<=1;
@@ -76,8 +75,8 @@ always @(posedge clk) begin
 		end
 		S_IDLE: begin
 			if(clkena && active) begin
-				rdptr<={category,counter[buckets_log2+1:2],accesstype};
-				wrptr<={category,counter[buckets_log2+1:2],accesstype};
+				rdptr<={category,counter[buckets_log2-1:0],accesstype};
+				wrptr<={category,counter[buckets_log2-1:0],accesstype};
 				state<=S_READ;
 			end
 		end
@@ -110,51 +109,66 @@ end
 
 // Virtual JTAG remote interface:
 
-reg [7:0] jtag_cmd;
+// Commands:
+//   0  -  reset counters
+//   1  -  enable monitoring
+//   2  -  disable monitoring
+//   3  -  fetch data
+//   4  -  fetch clkenacount
+//   5  -  external reset
+
+// Custom interface
+
+reg [31:0] jtag_user_d;    // 32-bit data in and out
+wire [31:0] jtag_user_q;
+wire jtag_cmd_stb;         // Command has been updated
+wire jtag_user_upd;        // A word has been transferred
+wire [3:0] jtag_cmd;
 
 reg [addr_log2-1:0] rdptr_j;
-reg [31:0] jtag_d;
 
+// Select between data sources based on command
 always @(posedge clk) begin
 	case(jtag_cmd)
-		8'h02: jtag_d <= storage[rdptr_j];
-		8'h03: jtag_d <= clkenacounter;
-		default: ;
+		4'h3: jtag_user_d <= storage[rdptr_j];
+		4'h4: jtag_user_d <= clkenacounter;
+		default: jtag_user_d <= 0;
 	endcase
 end
 
 
-// Data received from the host computer
+// Might as well capture CPU signals while we're at it:
+reg [30:0] jtag_capture_d=0;
+
+always @(posedge clk) begin
+	jtag_capture_d[0] <= clkena;
+	jtag_capture_d[2:1] <= cpustate;
+	jtag_capture_d[3] <= sel_chip;
+	jtag_capture_d[4] <= sel_kick;
+	jtag_capture_d[5] <= sel_fast24;
+	jtag_capture_d[6] <= sel_fast32;
+	jtag_capture_d[30:7] <= 0;
+end
 
 reg jtag_reset;
 reg jtag_report;
 
-reg jtag_req;
-reg jtag_ack;
-reg jtag_wr;
-wire [31:0] jtag_q;
-
 always @(posedge clk) begin
+	jtag_report<=1'b0;
+	reset_n_out <= 1'b1;
 	jtag_reset<=1'b0;
 
-	jtag_report<=1'b0;
-
-	if(jtag_ack && !jtag_wr) begin
-		jtag_cmd <= jtag_q[31:24];
-		case(jtag_q[31:24]) // Interpret the highest 8 bits as a command byte
-
-			8'h00: active <= 1'b0;
-			8'h01: active <= 1'b1;
-			8'h02: begin
+	if(jtag_cmd_stb) begin
+		case(jtag_cmd) // Interpret the highest 8 bits as a command byte
+			4'h0: jtag_reset <= 1'b1;
+			4'h1: active <= 1'b1;
+			4'h2: active <= 1'b0;
+			4'h3: begin
 				active <= 1'b0;
 				jtag_report<=1'b1;
 			end
-			8'h03: begin
-				jtag_report<=1'b1;
-			end
-
-			8'hff: jtag_reset<=1'b1; // Command 0xff: reset
-
+			4'h4: jtag_report<=1'b1;
+			4'h5: reset_n_out <= 1'b0;
 		endcase
 	end
 	
@@ -166,39 +180,35 @@ end
 // Plumbing
 
 always @(posedge clk) begin
-	jtag_req<=!jtag_ack;
 
-	if(jtag_ack && jtag_wr) begin
+	if(jtag_user_upd) begin // Data has been transferred
 		case(jtag_cmd)
-			8'h02: begin
-				rdptr_j<=rdptr_j+1;
-				jtag_wr <= ~(&rdptr_j);
-			end
-			8'h03: jtag_wr <= 1'b0;
+			4'h3: rdptr_j<=rdptr_j+1;
 			default: ;
 		endcase
 	end
 
-	if(jtag_report) begin
+	if(jtag_report)
 		rdptr_j<=0;
-		jtag_wr<=1'b1;
-	end
 
 	if(!reset_n)
 		rdptr_j<={addr_log2{1'b1}};
 end
 
-
-// This bridge is borrowed from the EightThirtyTwo debug interface
-
-debug_bridge_jtag #(.id('h0068)) bridge (
+jcapture #(
+	.capturedepth(8),       // Capturing isn't our main goal here, so relatively small FIFO.
+	.runlengthencoding(0),  // Turn off RLE to keep FMax high
+	.designid(16'h1010)     // Arbitrary ID code so our Tcl script can be sure it's talking to the right design.
+) jtag_inst (
 	.clk(clk),
 	.reset_n(reset_n),
-	.d(jtag_d),
-	.q(jtag_q),
-	.req(jtag_req),
-	.wr(jtag_wr),
-	.ack(jtag_ack)
+	.stb(1'b1),
+	.capture_d(jtag_capture_d),
+	.user_ir(jtag_cmd),
+	.user_ir_update(jtag_cmd_stb),
+	.user_d(jtag_user_d),
+	.user_q(jtag_user_q),
+	.user_update(jtag_user_upd)	
 );
 
 endmodule

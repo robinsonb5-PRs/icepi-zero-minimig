@@ -37,7 +37,6 @@ generic (
 		havecart : integer := 1;
 		sdram64meg : integer := 1;
 		dualsdram : integer := 0;
-		useprofiler : integer := 0;
 		usethrottle : integer := 1
 );
 port (
@@ -216,9 +215,12 @@ port (
 	sel_chip   : in std_logic;
 	sel_kick   : in std_logic;
 	sel_fast24 : in std_logic;
-	sel_fast32 : in std_logic
+	sel_fast32 : in std_logic;
+	reset_n_out : out std_logic
 );
 end component;
+
+signal jtag_reset_n : std_logic;
 
 component akiko
 port (
@@ -490,7 +492,7 @@ pf68K_Kernel_inst: entity work.TG68KdotC_Kernel
 
 process (clk) begin
 	if rising_edge(clk) then
-		if (reset='0' or nResetOut='0') then
+		if (reset='0' or nResetOut='0' or jtag_reset_n='0') then -- Include JTAG reset just to stop the JTAG module being optimised out.
 			z2ram_ena <= '0';
 			z3ram_ena <= '0';
 			z3ram2_ena <= '0';
@@ -743,7 +745,7 @@ begin
 	end process;
 end block;
 
-genprofiler : if useprofiler=1 generate
+genprofiler : if tg68k_use_profiler=true generate
 	profiler : component profile_cpu
 	port map (
 		clk => clk,
@@ -753,8 +755,13 @@ genprofiler : if useprofiler=1 generate
 		sel_chip => sel_chip,
 		sel_kick => sel_kick,
 		sel_fast24 => sel_z2ram,
-		sel_fast32 => sel_z3ram
+		sel_fast32 => sel_z3ram,
+		reset_n_out => jtag_reset_n
 	);
+end generate;
+
+gennoprofiler : if tg68k_use_profiler=false generate
+	jtag_reset_n <= '1';
 end generate;
 
 end;
